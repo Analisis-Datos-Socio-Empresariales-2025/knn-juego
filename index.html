@@ -127,9 +127,10 @@
             </div>
         </div>
 
-        <div class="relative flex justify-center items-center" style="min-height: 400px;">
-            <canvas id="knnCanvas" width="700" height="400" class="w-full max-w-2xl"></canvas>
-            <!-- Contenedor para los divs de los puntos (para arrastrar y z-index) -->
+        <!-- Contenedor padre para Canvas y Overlay (ahora gestiona el tamaño y posicionamiento) -->
+        <div id="canvas-and-overlay-parent" class="relative flex justify-center items-center w-full max-w-2xl mx-auto" style="height: auto;">
+            <canvas id="knnCanvas" width="700" height="400" class="block"></canvas>
+            <!-- Contenedor para los divs de los puntos (se superpone al canvas) -->
             <div id="point-container" class="absolute inset-0"></div>
         </div>
     </div>
@@ -144,14 +145,13 @@
         const voteResultsDiv = document.getElementById('vote-results');
         const predictedClassDiv = document.getElementById('predicted-class');
         const pointContainer = document.getElementById('point-container');
+        const canvasAndOverlayParent = document.getElementById('canvas-and-overlay-parent'); // Nuevo elemento padre
 
         // Escala para el lienzo (coordenadas lógicas 0-100 mapeadas a píxeles del canvas)
-        // Esto hace que la lógica de posicionamiento y distancia sea más sencilla.
         const logicalCanvasWidth = 100;
         const logicalCanvasHeight = 100;
 
         // Datos de ejemplo: [x, y, clase, nombre_punto]
-        // Las coordenadas (x, y) están en el sistema lógico 0-100.
         let dataPoints = [
             { x: 20, y: 30, class: 'benign', name: 'V1' },
             { x: 35, y: 60, class: 'malignant', name: 'V2' },
@@ -160,86 +160,68 @@
             { x: 80, y: 40, class: 'benign', name: 'V5' },
             { x: 15, y: 70, class: 'malignant', name: 'V6' },
             { x: 70, y: 15, class: 'benign', name: 'V7' },
-            // Añadir más puntos para mayor diversidad si K es grande
             { x: 10, y: 10, class: 'benign', name: 'V8' },
             { x: 90, y: 90, class: 'malignant', name: 'V9' },
             { x: 5, y: 50, class: 'benign', name: 'V10' },
         ];
 
-        // El "Nuevo Caso" (punto azul) que el usuario puede arrastrar
         let newCase = { x: 45, y: 45, class: 'new-case', name: 'Nuevo Caso' };
 
-        // Variables para la funcionalidad de arrastrar el "Nuevo Caso"
         let isDraggingNewCase = false;
         let dragOffsetX, dragOffsetY;
 
-        // Función para calcular la distancia euclidiana entre dos puntos lógicos
         function euclideanDistance(p1, p2) {
             return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
         }
 
-        // Función principal para dibujar y actualizar la simulación
         function drawSimulation() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar el área de dibujo del canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const k = parseInt(kValueInput.value); // Obtener el valor de K seleccionado por el usuario
-            kDisplay.textContent = `K = ${k}`; // Actualizar el texto que muestra el valor de K
+            const k = parseInt(kValueInput.value);
+            kDisplay.textContent = `K = ${k}`;
 
-            // Calcular distancias entre el "Nuevo Caso" y todos los "Vecinos"
             let distances = [];
             dataPoints.forEach(p => {
                 const dist = euclideanDistance(newCase, p);
                 distances.push({ point: p, distance: dist });
             });
 
-            // Ordenar los vecinos por su distancia al "Nuevo Caso" (de menor a mayor)
             distances.sort((a, b) => a.distance - b.distance);
-            // Seleccionar solo los K vecinos más cercanos
             const kNearest = distances.slice(0, k);
 
-            // Actualizar la visualización de los puntos (crear/actualizar divs HTML para arrastrar)
-            pointContainer.innerHTML = ''; // Limpiar el contenedor de puntos HTML
+            pointContainer.innerHTML = '';
 
-            // Dibujar los puntos vecinos y el "Nuevo Caso" como divs HTML
-            // Esto permite arrastrar el "Nuevo Caso" y aplicar estilos CSS avanzados
-            [...dataPoints, newCase].forEach(p => { // Iterar sobre todos los puntos (vecinos y nuevo caso)
+            [...dataPoints, newCase].forEach(p => {
                 const pointDiv = document.createElement('div');
-                pointDiv.className = `point ${p.class}`; // Asignar clases CSS para color y forma
+                pointDiv.className = `point ${p.class}`;
 
-                // Si el punto es uno de los K vecinos más cercanos, se le añade la clase 'highlighted'
                 if (p.class !== 'new-case' && kNearest.some(n => n.point === p)) {
                     pointDiv.classList.add('highlighted');
                 }
 
-                // Posicionar el div en el canvas. Restamos 12px (la mitad del tamaño del div) para centrarlo.
+                // Posicionar el div usando las dimensiones actuales del canvas (renderizadas)
                 pointDiv.style.left = `${(p.x / logicalCanvasWidth) * canvas.width - 12}px`;
                 pointDiv.style.top = `${(p.y / logicalCanvasHeight) * canvas.height - 12}px`;
-                // Añadir un título emergente al pasar el ratón (tooltip)
                 pointDiv.title = `${p.name} (${p.class === 'benign' ? 'Benigno' : (p.class === 'malignant' ? 'Maligno' : 'Nuevo Caso (Arrastra)')})`;
 
-                // Si es el "Nuevo Caso", añadirle la funcionalidad de arrastre
                 if (p.class === 'new-case') {
                     pointDiv.addEventListener('mousedown', startDrag);
-                    pointDiv.addEventListener('touchstart', startDrag, { passive: false }); // Para dispositivos táctiles
+                    pointDiv.addEventListener('touchstart', startDrag, { passive: false });
                 }
-                pointContainer.appendChild(pointDiv); // Añadir el div al contenedor
+                pointContainer.appendChild(pointDiv);
             });
 
-            // Dibujar líneas desde el "Nuevo Caso" a sus K vecinos más cercanos en el canvas
             kNearest.forEach(neighbor => {
                 ctx.beginPath();
-                // Mover al centro del "Nuevo Caso"
                 ctx.moveTo((newCase.x / logicalCanvasWidth) * canvas.width, (newCase.y / logicalCanvasHeight) * canvas.height);
-                // Dibujar línea al centro del vecino
                 ctx.lineTo((neighbor.point.x / logicalCanvasWidth) * canvas.width, (neighbor.point.y / logicalCanvasHeight) * canvas.height);
-                ctx.strokeStyle = '#F59E0B'; /* Color amarillo para las líneas de los vecinos */
+                ctx.strokeStyle = '#F59E0B';
                 ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]); /* Líneas discontinuas */
+                ctx.setLineDash([5, 5]);
                 ctx.stroke();
-                ctx.setLineDash([]); /* Resetear línea a sólida para futuros dibujos */
+                ctx.setLineDash([]);
             });
 
-            // Realizar el conteo de votos
             let benignVotes = 0;
             let malignantVotes = 0;
 
@@ -251,13 +233,11 @@
                 }
             });
 
-            // Mostrar los resultados de la votación en el panel lateral
             voteResultsDiv.innerHTML = `
                 <p><span class="font-bold text-green-600">Benigno:</span> ${benignVotes} voto(s)</p>
                 <p><span class="font-bold text-red-600">Maligno:</span> ${malignantVotes} voto(s)</p>
             `;
 
-            // Determinar y mostrar la clase predicha basada en la mayoría de votos
             let predictedClass = '';
             if (benignVotes > malignantVotes) {
                 predictedClass = 'Benigno';
@@ -276,14 +256,15 @@
         function getEventPos(event) {
             const rect = canvas.getBoundingClientRect();
             let clientX, clientY;
-            if (event.touches) { // Para eventos táctiles
+            if (event.touches) {
                 clientX = event.touches[0].clientX;
                 clientY = event.touches[0].clientY;
-            } else { // Para eventos de ratón
+            } else {
                 clientX = event.clientX;
                 clientY = event.clientY;
             }
             // Convertir coordenadas del navegador a coordenadas del canvas (píxeles)
+            // Aquí usamos las dimensiones del canvas obtenidas por getBoundingClientRect()
             return {
                 x: clientX - rect.left,
                 y: clientY - rect.top
@@ -291,22 +272,19 @@
         }
 
         function startDrag(event) {
-            // Solo arrastrar si el objetivo es el "Nuevo Caso" div
             if (event.target.classList.contains('new-case')) {
                 isDraggingNewCase = true;
                 const pos = getEventPos(event);
-                // Calcular el offset para que el punto no salte al centro del cursor
+                // Calcular el offset relativo al punto actual del Nuevo Caso
                 dragOffsetX = pos.x - (newCase.x / logicalCanvasWidth) * canvas.width;
                 dragOffsetY = pos.y - (newCase.y / logicalCanvasHeight) * canvas.height;
 
-                // Añadir listeners al documento para que el arrastre funcione fuera del punto div
                 document.addEventListener('mousemove', drag);
                 document.addEventListener('mouseup', endDrag);
                 document.addEventListener('touchmove', drag, { passive: false });
                 document.addEventListener('touchend', endDrag);
-                document.addEventListener('touchcancel', endDrag); // En caso de cancelación táctil
+                document.addEventListener('touchcancel', endDrag);
 
-                // Prevenir que el navegador arrastre imágenes o texto
                 event.preventDefault();
             }
         }
@@ -320,20 +298,20 @@
                 let newPixelY = pos.y - dragOffsetY;
 
                 // Limitar las coordenadas para que el punto no salga del canvas
-                newPixelX = Math.max(12, Math.min(canvas.width - 12, newPixelX)); // 12px de padding por el radio del punto
+                // Considerando el radio del punto (12px = 24px/2)
+                newPixelX = Math.max(12, Math.min(canvas.width - 12, newPixelX));
                 newPixelY = Math.max(12, Math.min(canvas.height - 12, newPixelY));
 
                 // Convertir coordenadas de píxeles a coordenadas lógicas 0-100
                 newCase.x = (newPixelX / canvas.width) * logicalCanvasWidth;
                 newCase.y = (newPixelY / canvas.height) * logicalCanvasHeight;
 
-                drawSimulation(); // Redibujar la simulación con la nueva posición del "Nuevo Caso"
+                drawSimulation();
             }
         }
 
         function endDrag() {
             isDraggingNewCase = false;
-            // Remover los listeners del documento para evitar problemas cuando no se arrastra
             document.removeEventListener('mousemove', drag);
             document.removeEventListener('mouseup', endDrag);
             document.removeEventListener('touchmove', drag);
@@ -341,36 +319,42 @@
             document.removeEventListener('touchcancel', endDrag);
         }
 
-
         // --- Event Listeners para Controles ---
-        kValueInput.addEventListener('input', drawSimulation); // Cuando el deslizador K cambia
+        kValueInput.addEventListener('input', drawSimulation);
 
         resetButton.addEventListener('click', () => {
-            // Posicionar el "Nuevo Caso" en una posición aleatoria (pero dentro de límites razonables)
-            newCase.x = Math.random() * (logicalCanvasWidth * 0.6) + (logicalCanvasWidth * 0.2); // x entre 20 y 80
-            newCase.y = Math.random() * (logicalCanvasHeight * 0.6) + (logicalCanvasHeight * 0.2); // y entre 20 y 80
-            kValueInput.value = 3; // Resetear K al valor predeterminado
-            drawSimulation(); // Redibujar la simulación con el nuevo "Nuevo Caso"
+            newCase.x = Math.random() * (logicalCanvasWidth * 0.6) + (logicalCanvasWidth * 0.2);
+            newCase.y = Math.random() * (logicalCanvasHeight * 0.6) + (logicalCanvasHeight * 0.2);
+            kValueInput.value = 3;
+            drawSimulation();
         });
 
         // --- Inicialización y Adaptabilidad ---
-        // Función para ajustar el tamaño del canvas cuando la ventana cambia de tamaño
         function handleResize() {
-            const containerDiv = canvas.parentElement;
-            // Asegurarse de que el canvas no sea más grande que su contenedor o un ancho máximo
-            canvas.width = Math.min(containerDiv.clientWidth, 700);
-            // Mantener la relación de aspecto del canvas (ej. 700x400)
-            canvas.height = (canvas.width / 700) * 400;
-            drawSimulation(); // Redibujar la simulación con el nuevo tamaño
+            // Ajustar el tamaño de dibujo del canvas
+            const parentWidth = canvasAndOverlayParent.clientWidth;
+            const newCanvasWidth = Math.min(parentWidth, 700); // Máximo 700px
+            const newCanvasHeight = (newCanvasWidth / 700) * 400; // Mantener relación de aspecto 700x400
+
+            canvas.width = newCanvasWidth;
+            canvas.height = newCanvasHeight;
+
+            // Ajustar las dimensiones CSS del canvas para asegurar que se renderice correctamente
+            canvas.style.width = `${newCanvasWidth}px`;
+            canvas.style.height = `${newCanvasHeight}px`;
+
+            // Hacer que el contenedor padre de canvas y overlay tenga exactamente la misma altura que el canvas
+            // Esto es CRUCIAL para que el 'absolute inset-0' del point-container funcione correctamente
+            canvasAndOverlayParent.style.height = `${newCanvasHeight}px`;
+
+            drawSimulation();
         }
 
-        // Event listener para redimensionamiento de ventana
         window.addEventListener('resize', handleResize);
 
-        // Inicializar la simulación y ajustar el tamaño del canvas al cargar la página
         window.onload = () => {
-            handleResize(); // Ajustar el tamaño del canvas por primera vez
-            drawSimulation(); // Dibujar la simulación inicial
+            handleResize();
+            drawSimulation();
         };
     </script>
 </body>
