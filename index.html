@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Votación K-NN</title>
+    <!-- Tailwind CSS CDN para estilos rápidos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos generales para el cuerpo del documento */
+        body {
+            font-family: 'Inter', sans-serif; /* Fuente moderna y legible */
+            background-color: #f0f4f8; /* Color de fondo suave */
+            color: #2d3748; /* Color de texto principal */
+        }
+        /* Estilos para el contenedor principal */
+        .container {
+            max-width: 1000px; /* Ancho máximo para el contenido */
+        }
+        /* Estilos para el elemento canvas donde se dibujan los puntos */
+        canvas {
+            background-color: #ffffff; /* Fondo blanco para el área de dibujo */
+            border: 2px solid #a0aec0; /* Borde sutil */
+            border-radius: 0.75rem; /* Esquinas redondeadas */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Sombra para profundidad */
+            touch-action: manipulation; /* Deshabilita acciones táctiles predeterminadas (ej. zoom con doble toque) */
+            -webkit-touch-callout: none; /* Deshabilita el menú contextual táctil */
+            -webkit-user-select: none; /* Deshabilita la selección de texto en iOS */
+            -khtml-user-select: none; /* Deshabilita la selección de texto en navegadores KHTML */
+            -moz-user-select: none; /* Deshabilita la selección de texto en Firefox */
+            -ms-user-select: none; /* Deshabilita la selección de texto en IE/Edge */
+            user-select: none; /* Deshabilita la selección de texto */
+        }
+        /* Estilos para los puntos individuales (divs) que representan las observaciones */
+        .point {
+            position: absolute; /* Posicionamiento absoluto dentro de su contenedor */
+            width: 24px; /* Ancho del punto */
+            height: 24px; /* Alto del punto */
+            border-radius: 50%; /* Forma circular */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.7); /* Borde blanco para contraste */
+            cursor: pointer; /* Cursor de puntero para indicar interactividad */
+            z-index: 10; /* Asegura que los puntos estén sobre las líneas del canvas */
+            transition: transform 0.1s ease-out; /* Transición suave para el efecto hover/drag */
+        }
+        /* Colores específicos para las clases */
+        .point.benign { background-color: #10B981; } /* Verde para Benigno */
+        .point.malignant { background-color: #EF4444; } /* Rojo para Maligno */
+        .point.new-case { background-color: #3B82F6; border: 3px solid #1E40AF; } /* Azul para el Nuevo Caso */
+        /* Efecto de resaltado para los K vecinos más cercanos */
+        .point.highlighted { border: 3px dashed #F59E0B; animation: pulse 1s infinite alternate; }
+
+        /* Animación para el efecto de pulso */
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.1); opacity: 0.8; }
+        }
+        /* Estilo para el área de sugerencias e instrucciones */
+        .instruction-box {
+            background-color: #e2e8f0; /* Fondo ligeramente gris para la caja de instrucciones */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+    </style>
+</head>
+<body class="p-8">
+    <div class="container mx-auto bg-white p-8 rounded-lg shadow-xl">
+        <h2 class="text-3xl font-extrabold text-center mb-6 text-blue-800">
+            Simulador: El Proceso de Votación en K-NN
+        </h2>
+        <p class="text-lg text-gray-700 mb-6 text-center">
+            Este recurso interactivo te ayudará a visualizar cómo el algoritmo K-Nearest Neighbors (K-NN) clasifica un "Nuevo Caso" (el punto **azul**) basándose en la mayoría de votos de sus "Vecinos" (los puntos rojos o verdes).
+        </p>
+        <p class="text-md text-gray-600 mb-4 text-center">
+            **Instrucciones:**
+            1.  **Arrastra el punto AZUL** (Nuevo Caso) a cualquier lugar dentro del área blanca para cambiar sus características.
+            2.  **Usa el deslizador de K** para seleccionar cuántos vecinos quieres que el modelo considere.
+            3.  Observa cómo cambian los vecinos resaltados y el resultado de la votación.
+        </p>
+
+        <div class="flex flex-col md:flex-row justify-center items-center md:items-start gap-8 mb-8">
+            <div class="flex-1 w-full md:w-auto p-4 bg-gray-50 rounded-lg shadow-md border border-gray-200">
+                <h3 class="text-xl font-bold mb-3 text-gray-800">Configuración del Modelo</h3>
+                <div class="mb-4">
+                    <label for="k-value" class="block text-sm font-medium text-gray-700 mb-1">
+                        Selecciona el valor de **K** (Número de Vecinos a considerar):
+                    </label>
+                    <input type="range" id="k-value" min="1" max="7" value="3" class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer">
+                    <span id="k-display" class="text-lg font-semibold text-blue-700 mt-2 block text-center">K = 3</span>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Un K pequeño (ej. 1) hace al modelo sensible a vecinos individuales. Un K grande promedia más votos.
+                    </p>
+                </div>
+                <div class="mb-4">
+                    <button id="reset-button" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300">
+                        Reiniciar Simulación (Nuevo Caso Aleatorio)
+                    </button>
+                </div>
+                <div class="text-sm text-gray-600 mt-4">
+                    <p class="mb-1"><span class="inline-block w-4 h-4 rounded-full bg-blue-500 mr-2"></span> Nuevo Caso (punto a clasificar)</p>
+                    <p class="mb-1"><span class="inline-block w-4 h-4 rounded-full bg-green-600 mr-2"></span> Vecino Benigno (clase conocida)</p>
+                    <p class="mb-1"><span class="inline-block w-4 h-4 rounded-full bg-red-600 mr-2"></span> Vecino Maligno (clase conocida)</p>
+                </div>
+            </div>
+
+            <div class="flex-1 w-full md:w-auto p-4 bg-gray-50 rounded-lg shadow-md border border-gray-200">
+                <h3 class="text-xl font-bold mb-3 text-gray-800">Resultados de la Votación</h3>
+                <div id="vote-results" class="text-lg text-gray-800 mb-4">
+                    <p class="text-gray-600">Calculando la mayoría de votos...</p>
+                </div>
+                <div id="predicted-class" class="text-2xl font-bold text-center p-3 rounded-lg bg-blue-100 text-blue-800 shadow-inner">
+                    Clase Predicha: ?
+                </div>
+                <div class="instruction-box mt-4">
+                    <p class="font-semibold text-gray-800 mb-2">¿Cómo interpretar la Votación?</p>
+                    <p>El "Nuevo Caso" (azul) será clasificado según la clase que tenga más votos entre sus `K` vecinos más cercanos (resaltados con borde amarillo discontinuo).</p>
+                    <p class="mt-2">Si hay un empate en la votación, la clase predicha se mostrará como "Empate (sin clase clara)".</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="relative flex justify-center items-center" style="min-height: 400px;">
+            <canvas id="knnCanvas" width="700" height="400" class="w-full max-w-2xl"></canvas>
+            <!-- Contenedor para los divs de los puntos (para arrastrar y z-index) -->
+            <div id="point-container" class="absolute inset-0"></div>
+        </div>
+    </div>
+
+    <script>
+        // Obtener referencias a los elementos HTML
+        const canvas = document.getElementById('knnCanvas');
+        const ctx = canvas.getContext('2d');
+        const kValueInput = document.getElementById('k-value');
+        const kDisplay = document.getElementById('k-display');
+        const resetButton = document.getElementById('reset-button');
+        const voteResultsDiv = document.getElementById('vote-results');
+        const predictedClassDiv = document.getElementById('predicted-class');
+        const pointContainer = document.getElementById('point-container');
+
+        // Escala para el lienzo (coordenadas lógicas 0-100 mapeadas a píxeles del canvas)
+        // Esto hace que la lógica de posicionamiento y distancia sea más sencilla.
+        const logicalCanvasWidth = 100;
+        const logicalCanvasHeight = 100;
+
+        // Datos de ejemplo: [x, y, clase, nombre_punto]
+        // Las coordenadas (x, y) están en el sistema lógico 0-100.
+        let dataPoints = [
+            { x: 20, y: 30, class: 'benign', name: 'V1' },
+            { x: 35, y: 60, class: 'malignant', name: 'V2' },
+            { x: 50, y: 20, class: 'benign', name: 'V3' },
+            { x: 65, y: 75, class: 'malignant', name: 'V4' },
+            { x: 80, y: 40, class: 'benign', name: 'V5' },
+            { x: 15, y: 70, class: 'malignant', name: 'V6' },
+            { x: 70, y: 15, class: 'benign', name: 'V7' },
+            // Añadir más puntos para mayor diversidad si K es grande
+            { x: 10, y: 10, class: 'benign', name: 'V8' },
+            { x: 90, y: 90, class: 'malignant', name: 'V9' },
+            { x: 5, y: 50, class: 'benign', name: 'V10' },
+        ];
+
+        // El "Nuevo Caso" (punto azul) que el usuario puede arrastrar
+        let newCase = { x: 45, y: 45, class: 'new-case', name: 'Nuevo Caso' };
+
+        // Variables para la funcionalidad de arrastrar el "Nuevo Caso"
+        let isDraggingNewCase = false;
+        let dragOffsetX, dragOffsetY;
+
+        // Función para calcular la distancia euclidiana entre dos puntos lógicos
+        function euclideanDistance(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        }
+
+        // Función principal para dibujar y actualizar la simulación
+        function drawSimulation() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar el área de dibujo del canvas
+
+            const k = parseInt(kValueInput.value); // Obtener el valor de K seleccionado por el usuario
+            kDisplay.textContent = `K = ${k}`; // Actualizar el texto que muestra el valor de K
+
+            // Calcular distancias entre el "Nuevo Caso" y todos los "Vecinos"
+            let distances = [];
+            dataPoints.forEach(p => {
+                const dist = euclideanDistance(newCase, p);
+                distances.push({ point: p, distance: dist });
+            });
+
+            // Ordenar los vecinos por su distancia al "Nuevo Caso" (de menor a mayor)
+            distances.sort((a, b) => a.distance - b.distance);
+            // Seleccionar solo los K vecinos más cercanos
+            const kNearest = distances.slice(0, k);
+
+            // Actualizar la visualización de los puntos (crear/actualizar divs HTML para arrastrar)
+            pointContainer.innerHTML = ''; // Limpiar el contenedor de puntos HTML
+
+            // Dibujar los puntos vecinos y el "Nuevo Caso" como divs HTML
+            // Esto permite arrastrar el "Nuevo Caso" y aplicar estilos CSS avanzados
+            [...dataPoints, newCase].forEach(p => { // Iterar sobre todos los puntos (vecinos y nuevo caso)
+                const pointDiv = document.createElement('div');
+                pointDiv.className = `point ${p.class}`; // Asignar clases CSS para color y forma
+
+                // Si el punto es uno de los K vecinos más cercanos, se le añade la clase 'highlighted'
+                if (p.class !== 'new-case' && kNearest.some(n => n.point === p)) {
+                    pointDiv.classList.add('highlighted');
+                }
+
+                // Posicionar el div en el canvas. Restamos 12px (la mitad del tamaño del div) para centrarlo.
+                pointDiv.style.left = `${(p.x / logicalCanvasWidth) * canvas.width - 12}px`;
+                pointDiv.style.top = `${(p.y / logicalCanvasHeight) * canvas.height - 12}px`;
+                // Añadir un título emergente al pasar el ratón (tooltip)
+                pointDiv.title = `${p.name} (${p.class === 'benign' ? 'Benigno' : (p.class === 'malignant' ? 'Maligno' : 'Nuevo Caso (Arrastra)')})`;
+
+                // Si es el "Nuevo Caso", añadirle la funcionalidad de arrastre
+                if (p.class === 'new-case') {
+                    pointDiv.addEventListener('mousedown', startDrag);
+                    pointDiv.addEventListener('touchstart', startDrag, { passive: false }); // Para dispositivos táctiles
+                }
+                pointContainer.appendChild(pointDiv); // Añadir el div al contenedor
+            });
+
+            // Dibujar líneas desde el "Nuevo Caso" a sus K vecinos más cercanos en el canvas
+            kNearest.forEach(neighbor => {
+                ctx.beginPath();
+                // Mover al centro del "Nuevo Caso"
+                ctx.moveTo((newCase.x / logicalCanvasWidth) * canvas.width, (newCase.y / logicalCanvasHeight) * canvas.height);
+                // Dibujar línea al centro del vecino
+                ctx.lineTo((neighbor.point.x / logicalCanvasWidth) * canvas.width, (neighbor.point.y / logicalCanvasHeight) * canvas.height);
+                ctx.strokeStyle = '#F59E0B'; /* Color amarillo para las líneas de los vecinos */
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]); /* Líneas discontinuas */
+                ctx.stroke();
+                ctx.setLineDash([]); /* Resetear línea a sólida para futuros dibujos */
+            });
+
+            // Realizar el conteo de votos
+            let benignVotes = 0;
+            let malignantVotes = 0;
+
+            kNearest.forEach(neighbor => {
+                if (neighbor.point.class === 'benign') {
+                    benignVotes++;
+                } else {
+                    malignantVotes++;
+                }
+            });
+
+            // Mostrar los resultados de la votación en el panel lateral
+            voteResultsDiv.innerHTML = `
+                <p><span class="font-bold text-green-600">Benigno:</span> ${benignVotes} voto(s)</p>
+                <p><span class="font-bold text-red-600">Maligno:</span> ${malignantVotes} voto(s)</p>
+            `;
+
+            // Determinar y mostrar la clase predicha basada en la mayoría de votos
+            let predictedClass = '';
+            if (benignVotes > malignantVotes) {
+                predictedClass = 'Benigno';
+                predictedClassDiv.className = 'text-2xl font-bold text-center p-3 rounded-lg bg-green-100 text-green-800 shadow-inner';
+            } else if (malignantVotes > benignVotes) {
+                predictedClass = 'Maligno';
+                predictedClassDiv.className = 'text-2xl font-bold text-center p-3 rounded-lg bg-red-100 text-red-800 shadow-inner';
+            } else {
+                predictedClass = 'Empate (sin clase clara)';
+                predictedClassDiv.className = 'text-2xl font-bold text-center p-3 rounded-lg bg-gray-100 text-gray-800 shadow-inner';
+            }
+            predictedClassDiv.textContent = `Clase Predicha: ${predictedClass}`;
+        }
+
+        // --- Funcionalidad de Arrastrar el Nuevo Caso ---
+        function getEventPos(event) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            if (event.touches) { // Para eventos táctiles
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else { // Para eventos de ratón
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+            // Convertir coordenadas del navegador a coordenadas del canvas (píxeles)
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function startDrag(event) {
+            // Solo arrastrar si el objetivo es el "Nuevo Caso" div
+            if (event.target.classList.contains('new-case')) {
+                isDraggingNewCase = true;
+                const pos = getEventPos(event);
+                // Calcular el offset para que el punto no salte al centro del cursor
+                dragOffsetX = pos.x - (newCase.x / logicalCanvasWidth) * canvas.width;
+                dragOffsetY = pos.y - (newCase.y / logicalCanvasHeight) * canvas.height;
+
+                // Añadir listeners al documento para que el arrastre funcione fuera del punto div
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', endDrag);
+                document.addEventListener('touchmove', drag, { passive: false });
+                document.addEventListener('touchend', endDrag);
+                document.addEventListener('touchcancel', endDrag); // En caso de cancelación táctil
+
+                // Prevenir que el navegador arrastre imágenes o texto
+                event.preventDefault();
+            }
+        }
+
+        function drag(event) {
+            if (isDraggingNewCase) {
+                const pos = getEventPos(event);
+
+                // Calcular nuevas coordenadas en píxeles, ajustando por el offset de arrastre
+                let newPixelX = pos.x - dragOffsetX;
+                let newPixelY = pos.y - dragOffsetY;
+
+                // Limitar las coordenadas para que el punto no salga del canvas
+                newPixelX = Math.max(12, Math.min(canvas.width - 12, newPixelX)); // 12px de padding por el radio del punto
+                newPixelY = Math.max(12, Math.min(canvas.height - 12, newPixelY));
+
+                // Convertir coordenadas de píxeles a coordenadas lógicas 0-100
+                newCase.x = (newPixelX / canvas.width) * logicalCanvasWidth;
+                newCase.y = (newPixelY / canvas.height) * logicalCanvasHeight;
+
+                drawSimulation(); // Redibujar la simulación con la nueva posición del "Nuevo Caso"
+            }
+        }
+
+        function endDrag() {
+            isDraggingNewCase = false;
+            // Remover los listeners del documento para evitar problemas cuando no se arrastra
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', endDrag);
+            document.removeEventListener('touchmove', drag);
+            document.removeEventListener('touchend', endDrag);
+            document.removeEventListener('touchcancel', endDrag);
+        }
+
+
+        // --- Event Listeners para Controles ---
+        kValueInput.addEventListener('input', drawSimulation); // Cuando el deslizador K cambia
+
+        resetButton.addEventListener('click', () => {
+            // Posicionar el "Nuevo Caso" en una posición aleatoria (pero dentro de límites razonables)
+            newCase.x = Math.random() * (logicalCanvasWidth * 0.6) + (logicalCanvasWidth * 0.2); // x entre 20 y 80
+            newCase.y = Math.random() * (logicalCanvasHeight * 0.6) + (logicalCanvasHeight * 0.2); // y entre 20 y 80
+            kValueInput.value = 3; // Resetear K al valor predeterminado
+            drawSimulation(); // Redibujar la simulación con el nuevo "Nuevo Caso"
+        });
+
+        // --- Inicialización y Adaptabilidad ---
+        // Función para ajustar el tamaño del canvas cuando la ventana cambia de tamaño
+        function handleResize() {
+            const containerDiv = canvas.parentElement;
+            // Asegurarse de que el canvas no sea más grande que su contenedor o un ancho máximo
+            canvas.width = Math.min(containerDiv.clientWidth, 700);
+            // Mantener la relación de aspecto del canvas (ej. 700x400)
+            canvas.height = (canvas.width / 700) * 400;
+            drawSimulation(); // Redibujar la simulación con el nuevo tamaño
+        }
+
+        // Event listener para redimensionamiento de ventana
+        window.addEventListener('resize', handleResize);
+
+        // Inicializar la simulación y ajustar el tamaño del canvas al cargar la página
+        window.onload = () => {
+            handleResize(); // Ajustar el tamaño del canvas por primera vez
+            drawSimulation(); // Dibujar la simulación inicial
+        };
+    </script>
+</body>
+</html>
